@@ -1,0 +1,23 @@
+{
+  "name": "Big Alex's Podcast",
+  "description": "A Flask webserver for serving awesome podcasts hosted by Alex Cox",
+  "repository": "https://github.com/Ogreman/alexpodcast",
+  "keywords": [
+    "python", 
+    "flask", 
+    "podcast",
+  ],
+  "success_url": "/",
+  "formation": {
+    "web": {
+        "quantity": 1,
+        "size": "free"
+    }
+  },
+  "image": "heroku/python",
+  "addons": [
+    {
+      "plan": "memcachier:dev"
+    }
+  ]
+}
