@@ -19,5 +19,10 @@
     {
       "plan": "memcachier:dev"
     }
-  ]
+  ],
+  "env": {
+    "HEROKU_APP": {
+      "value": "bigalpod"
+    }
+  }
 }
