@@ -1,6 +1,8 @@
 import re
 import os
 import json
+import functools
+import StringIO
 import flask
 import requests
 import heroku
@@ -13,27 +15,64 @@ app.config.from_object(os.environ.get('APP_SETTINGS', 'config.DevelopmentConfig'
 app.cache = init_cacheify(app)
 app.cloud = heroku.from_key(os.environ['HEROKU_KEY'])
 app.heroku_app = app.cloud.apps[os.environ['HEROKU_APP']]
+app.default_timeout = 10 if app.config['DEBUG'] else (60 * 60)
+app.templates = {}
 
 
 def get_template(url, prefix='html'):
+    print "[template]: getting " + url
     key = prefix + '-' + url.split('/')[-1]
     template = app.cache.get(key)
     if not template:
-        response = requests.get(url)
-        if response.ok:
-            template = response.content
-            app.cache.set(key, template, 60 * 10)
-        else:
+        print "[template]: not found in cache"
+        try:
+            response = requests.get(url)
+            if response.ok:
+                template = response.content
+                app.cache.set(key, template, app.default_timeout)
+            else:
+                print "[template]: failed to get " + url
+                print "[template]: " + str(response.status_code)
+                return ''
+        except requests.exceptions.ConnectionError:
+            print "[template]: connection failed to " + url
             return ''
+    else:
+        print "[template]: using cache"
     return template
 
 
+def templated(key=None, **func_kw):
+    def templated_decorator(func):
+        @functools.wraps(func)
+        def wraps(*args, **kwargs):
+            app.templates[key or hash(func)] = get_template(**func_kw)
+            return func(*args, **kwargs)
+        return wraps
+    return templated_decorator
+
+
 @app.route('/', methods=['GET'])
-@app.cache.cached(timeout=60 * 60)
+@app.cache.cached(timeout=app.default_timeout)
+@templated(key='index', url=os.environ['INDEX_HTML_URL'])
 def index():
-    template = get_template(index.html_url)
+    template = app.templates.get('index')
+    if not template:
+        return '', 404
     return flask.render_template_string(template), 200
-index.html_url = os.environ['INDEX_HTML_URL']
+
+
+@app.route('/main.css', methods=['GET'])
+@app.cache.cached(timeout=app.default_timeout)
+@templated(key='main', url=os.environ['MAIN_CSS_URL'], prefix='css')
+def main():
+    template = app.templates.get('main')
+    if not template:
+        return '', 404
+    file_handle = StringIO.StringIO()
+    file_handle.write(template)
+    file_handle.seek(0)
+    return flask.send_file(file_handle, attachment_filename="main.css")
 
 
 @app.route('/set', methods=['GET'])
