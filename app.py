@@ -14,17 +14,22 @@ app = flask.Flask(__name__, template_folder=Path(__file__).ancestor(1).child("te
 app.config.from_object(os.environ.get('APP_SETTINGS', 'config.DevelopmentConfig'))
 app.cache = init_cacheify(app)
 try:
+    print "[heroku]: connecting to cloud service..."
     app.cloud = heroku.from_key(os.environ['HEROKU_KEY'])
 except requests.exceptions.RequestException:
     print "[heroku]: failed to connect to cloud service"
     app.cloud = None
 else:
     app.heroku_app = app.cloud.apps[os.environ['HEROKU_APP']]
+    print "[heroku]: connected"
 app.default_timeout = 10 if app.config['DEBUG'] else (60 * 60)
 app.templates = {}
 
 
 def get_template(url, prefix='html'):
+    if not url:
+        print "[template]: empty URL received"
+        return ''
     key = prefix + '-' + url.split('/')[-1]
     print "[template]: getting " + key + "..."
     template = app.cache.get(key)
@@ -49,20 +54,24 @@ def get_template(url, prefix='html'):
     return template
 
 
-def templated(key=None, **func_kw):
+def templated(key=None, **template_kwargs):
+    # outer for handling arguments to the decorator
     def templated_decorator(func):
+        # store the key to the template on the decorated function
         func.key = key or hash(func)
+
         @functools.wraps(func)
         def wraps(*args, **kwargs):
-            app.templates[func.key] = get_template(**func_kw)
+            app.templates[func.key] = get_template(**template_kwargs)
             return func(*args, **kwargs)
+        
         return wraps
     return templated_decorator
 
 
 @app.route('/', methods=['GET'])
 @app.cache.cached(timeout=app.default_timeout)
-@templated(key='index', url=os.environ['INDEX_HTML_URL'])
+@templated(key='index', url=os.environ.get('INDEX_HTML_URL', ''))
 def index():
     template = app.templates.get(index.key)
     if not template:
@@ -72,7 +81,7 @@ def index():
 
 @app.route('/main.css', methods=['GET'])
 @app.cache.cached(timeout=app.default_timeout)
-@templated(key='main', url=os.environ['MAIN_CSS_URL'], prefix='css')
+@templated(key='main', url=os.environ.get('MAIN_CSS_URL', ''), prefix='css')
 def main():
     template = app.templates.get(main.key)
     if not template:
